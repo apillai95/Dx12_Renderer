@@ -1,37 +1,51 @@
 #include <iostream>
 #include <Support/WinInclude.h>
 #include <Support/ComPointer.h>
+#include <DxDebug/DXDebugLayer.h>
+#include <D3D/DXContext.h>
+#include <Support/Window.h>
 
 int main()
 {
-//#ifdef _DEBUG
-//	{
-//	}
-//#endif
-	ComPointer<ID3D12Debug> debugController;
-	D3D12GetDebugInterface(IID_PPV_ARGS(&debugController));
-	debugController->EnableDebugLayer();
+    DXDebugLayer::Get().Init();
+    if (DXContext::Get().Init() && DXWindow::Get().Init())
+    {
+        // Start in full screen?
+        //DXWindow::Get().SetFullscreen(true);
 
-	ComPointer<ID3D12Device> device;
-	HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device));
-	if (FAILED(hr))
-	{
-		// Handle error
-		std::cout << "Berry sad\n";
-	}
+        while (!DXWindow::Get().ShouldClose())
+        {
+            // Execute pending windows messages
+            DXWindow::Get().Update();
 
-	ComPointer<ID3D12Debug1> debug6;
-	hr = device->QueryInterface(IID_PPV_ARGS(&debug6));
-	if (FAILED(hr))
-	{
-		// Handle error
-		std::cout << "Berry sad\n";
-	}
+            // Resize window if necessary
+            if (DXWindow::Get().ShouldResize())
+            {
+                // flush command queue before resizing
+				DXContext::Get().Flush(DXWindow::Get().GetFrameCount());
+				DXWindow::Get().Resize();
+            }
 
-	hr = device->QueryInterface(IID_PPV_ARGS(&debugController));
+            // prep for Draw
+            auto* cmdlist = DXContext::Get().InitCommandList();
 
 
-    std::cout << "Hello World!\n";
+
+            // finish Draw and present
+            DXContext::Get().ExecuteCommandList();
+            DXWindow::Get().Present();
+        }
+
+        // Flush command queue, buffer count number of times
+        DXContext::Get().Flush(DXWindow::Get().GetFrameCount());
+    
+        DXWindow::Get().Shutdown();
+        DXContext::Get().Shutdown();
+    }
+
+    DXDebugLayer::Get().Shutdown();
+
+
 
     POINT pt;
     GetCursorPos(&pt);
