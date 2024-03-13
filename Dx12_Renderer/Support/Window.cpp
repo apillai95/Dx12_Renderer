@@ -71,12 +71,28 @@ bool DXWindow::Init()
 	if (!sc1.QueryInterface(m_swapChain))
 		return false;
 
-	for (size_t i = 0; i < FrameCount; ++i)
+	//Create RTV Heap
+	D3D12_DESCRIPTOR_HEAP_DESC dHeapDesc{};
+	dHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	dHeapDesc.NumDescriptors = FrameCount;
+	dHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	dHeapDesc.NodeMask = 0;
+
+	if (FAILED(DXContext::Get().GetDevice()->CreateDescriptorHeap(&dHeapDesc, IID_PPV_ARGS(&m_rtvDescHeap))))
+		return false;
+
+	// Create handles for each heap created (NumDescriptors), here - 2
+	auto baseHandle = m_rtvDescHeap->GetCPUDescriptorHandleForHeapStart();
+	auto handleIncrement = DXContext::Get().GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	for (size_t i = 0; i < dHeapDesc.NumDescriptors; ++i)
 	{
-		if(FAILED(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_buffers[i]))))
-			return false;
+		m_rtvHandles[i].ptr = (baseHandle.ptr + (handleIncrement * i));
 	}
 
+	// Get Buffers
+	if (!GetBuffers())
+		return false;
+	
 	return true;
 }
 
@@ -97,11 +113,10 @@ void DXWindow::Present()
 
 void DXWindow::Shutdown()
 {
-	for (size_t i = 0; i < FrameCount; ++i)
-	{
-		m_buffers[i].Release();
-	}
+	ReleaseBuffers();
 
+	m_rtvDescHeap.Release();
+	
 	m_swapChain.Release();
 
 	if (m_window)
@@ -113,6 +128,8 @@ void DXWindow::Shutdown()
 
 void DXWindow::Resize()
 {
+	ReleaseBuffers();
+
 	RECT cr;
 	if (GetClientRect(m_window, &cr))
 	{
@@ -127,6 +144,9 @@ void DXWindow::Resize()
 		);
 		m_shouldResize = false;
 	}
+
+	// can throw if failed getting buffers
+	GetBuffers();
 }
 
 void DXWindow::SetFullscreen(bool enabled)
@@ -163,6 +183,69 @@ void DXWindow::SetFullscreen(bool enabled)
 	}
 
 	m_isFullscreen = enabled;
+}
+
+void DXWindow::BeginFrame(ID3D12GraphicsCommandList6* cmdList)
+{
+	m_currentBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
+
+	D3D12_RESOURCE_BARRIER barrier;
+	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barrier.Transition.pResource = m_buffers[m_currentBufferIndex];
+	barrier.Transition.Subresource = 0;
+	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+	cmdList->ResourceBarrier(1, &barrier);
+
+	float clearColor[] = { 0.392f, 0.584f, 0.929f, 1.f }; // CORNFLOWER BLUE!!!
+	cmdList->ClearRenderTargetView(m_rtvHandles[m_currentBufferIndex], clearColor, 0, nullptr);
+
+	cmdList->OMSetRenderTargets(1, &m_rtvHandles[m_currentBufferIndex], false, nullptr);
+}
+
+void DXWindow::EndFrame(ID3D12GraphicsCommandList6* cmdList)
+{
+	D3D12_RESOURCE_BARRIER barrier;
+	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barrier.Transition.pResource = m_buffers[m_currentBufferIndex];
+	barrier.Transition.Subresource = 0;
+	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+
+	cmdList->ResourceBarrier(1, &barrier);
+}
+
+bool DXWindow::GetBuffers()
+{
+	for (size_t i = 0; i < FrameCount; ++i)
+	{
+		if (FAILED(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_buffers[i]))))
+			return false;
+
+		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{};
+		rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		rtvDesc.Texture2D.MipSlice = 0;
+		rtvDesc.Texture2D.PlaneSlice = 0;
+
+		DXContext::Get().GetDevice()->CreateRenderTargetView(
+			m_buffers[i],
+			&rtvDesc,
+			m_rtvHandles[i]
+		);
+	}
+	return true;
+}
+
+void DXWindow::ReleaseBuffers()
+{
+	for (size_t i = 0; i < FrameCount; ++i)
+	{
+		m_buffers[i].Release();
+	}
 }
 
 LRESULT CALLBACK DXWindow::OnWindowMessage(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
