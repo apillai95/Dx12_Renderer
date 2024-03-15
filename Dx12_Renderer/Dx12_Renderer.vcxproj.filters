@@ -27,6 +27,9 @@
     <ClCompile Include="Support\Window.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Support\Shader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Support\WinInclude.h">
@@ -44,5 +47,12 @@
     <ClInclude Include="Support\Window.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Support\Shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\VertexShader.hlsl" />
+    <FxCompile Include="Shaders\PixelShader.hlsl" />
   </ItemGroup>
 </Project>

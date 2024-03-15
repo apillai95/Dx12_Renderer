@@ -4,6 +4,7 @@
 #include <DxDebug/DXDebugLayer.h>
 #include <D3D/DXContext.h>
 #include <Support/Window.h>
+#include <Support/Shader.h>
 
 int main()
 {
@@ -13,7 +14,6 @@ int main()
         // Start in full screen?
         //DXWindow::Get().SetFullscreen(true);
 
-        const char* hello = "Hello World!";
 
         D3D12_HEAP_PROPERTIES hpUpload{};
 		hpUpload.Type = D3D12_HEAP_TYPE_UPLOAD;
@@ -29,6 +29,24 @@ int main()
 		hpDefault.CreationNodeMask = 0;
 		hpDefault.VisibleNodeMask = 0;
 
+        // === Vertex Data ===
+        struct Vertex
+        {
+            float x, y;
+        };
+
+		Vertex vertices[] =
+        {
+            {-1.f, 0.f},
+            {0.f, 1.f},
+            {1.f, 0.f}
+        };
+        D3D12_INPUT_ELEMENT_DESC vertexLayout[] =
+        {
+            {"Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        };
+
+        // === Upload & Vertex Buffers ===
         D3D12_RESOURCE_DESC rd{};
 		rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 		rd.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
@@ -50,6 +68,32 @@ int main()
             &hpDefault, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&vertexBuffer)
         );
 
+        // Copy void* -> cpu resource
+        void* uploadBufferAddress;
+        D3D12_RANGE uploadRange;
+        uploadRange.Begin = 0;
+        uploadRange.End = 1023; // size - 1
+        uploadBuffer->Map(0, &uploadRange, &uploadBufferAddress);
+        memcpy(uploadBufferAddress, vertices, sizeof(vertices));
+        uploadBuffer->Unmap(0, &uploadRange);
+
+        // Copy CPU resource -> gpu resource
+        auto* tempCmdList = DXContext::Get().InitCommandList();
+        tempCmdList->CopyBufferRegion(vertexBuffer, 0, uploadBuffer, 0, 1024);
+		DXContext::Get().ExecuteCommandList();
+
+        // === Pipeline State ===
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC gfxPsod{};
+		gfxPsod.InputLayout.NumElements = _countof(vertexLayout);
+		gfxPsod.InputLayout.pInputElementDescs = vertexLayout;
+        gfxPsod.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
+
+        // === Vertex Buffer View ===
+		D3D12_VERTEX_BUFFER_VIEW vbv{};
+		vbv.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+		vbv.SizeInBytes = sizeof(Vertex) * _countof(vertices);
+		vbv.StrideInBytes = sizeof(Vertex);
+
         while (!DXWindow::Get().ShouldClose())
         {
             // Execute pending windows messages
@@ -69,7 +113,13 @@ int main()
             // draw to window
             DXWindow::Get().BeginFrame(cmdlist);
 
+            // === Input Assembler ===
+            
+            cmdlist->IASetVertexBuffers(0, 1, &vbv);
+            cmdlist->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
             // drawing
+            cmdlist->DrawInstanced(_countof(vertices), 1, 0, 0);
 
             DXWindow::Get().EndFrame(cmdlist);
 
@@ -80,6 +130,9 @@ int main()
 
         // Flush command queue, buffer count number of times
         DXContext::Get().Flush(DXWindow::Get().GetFrameCount());
+
+        vertexBuffer.Release();
+        uploadBuffer.Release();
     
         DXWindow::Get().Shutdown();
         DXContext::Get().Shutdown();
