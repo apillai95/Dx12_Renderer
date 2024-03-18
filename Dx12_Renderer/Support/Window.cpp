@@ -35,8 +35,8 @@ bool DXWindow::Init()
 		(LPCWSTR)m_wndClass, 
 		L"Dx12Renderer", 
 		WS_OVERLAPPEDWINDOW | WS_VISIBLE, 
-		monitorInfo.rcWork.left + 100,
-		monitorInfo.rcWork.top	+100, 
+		monitorInfo.rcWork.left + 10,
+		monitorInfo.rcWork.top	+10, 
 		m_width,
 		m_height,
 		nullptr, nullptr, wcex.hInstance, nullptr

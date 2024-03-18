@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <wrl/client.h>
 #include <cstdlib>
+#include <iostream>
 
 #include <d3d12.h>
 #include <dxgi1_6.h>
@@ -13,3 +14,5 @@
 #include <d3d12sdklayers.h>
 #include <dxgidebug.h>
 #endif // _DEBUG
+
+#include <wincodec.h>
